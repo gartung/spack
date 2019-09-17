@@ -282,10 +282,10 @@ def machotools_get_paths(path_name):
     idpath = None
     rpaths = []
     deps = []
-    with rewritter_factory(path_name) as rewritter:
-        idpath = rewritter.install_name
-        rpaths = rewritter.rpaths
-        deps = rewritter.dependencies
+    with rewriter_factory(path_name) as rewriter:
+        idpath = rewriter.install_name
+        rpaths = rewriter.rpaths
+        deps = rewriter.dependencies
     return rpaths, deps, idpath
 
 def strings_contains_installroot(path_name, root_dir):
@@ -359,7 +359,7 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
         f.truncate()
 
 
-def relocate_binary_macho(path_names, old_dir, new_dir, allow_root):
+def relocate_macho_binary(path_names, old_dir, new_dir, allow_root):
     """
     Change old_dir to new_dir in RPATHs of elf or mach-o files
     Account for the case where old_dir is now a placeholder
@@ -395,7 +395,7 @@ def relocate_binary_macho(path_names, old_dir, new_dir, allow_root):
                      (path_name, new_dir, old_dir))
 
 
-def relocate_binary_elf(path_names, old_dir, new_dir, allow_root):
+def relocate_elf_binary(path_names, old_dir, new_dir, allow_root):
     """
     Change old_dir to new_dir in RPATHs of elf binaries
     Account for the case where old_dir is now a placeholder
