@@ -585,8 +585,6 @@ def file_is_relocatable(file):
         ValueError: if the file does not exist or the path is not absolute
     """
    
-    tty.msg(platform.system().lower())
-    assert(platform.system().lower() == 'darwin')
     if not (platform.system().lower() == 'darwin'
             or platform.system().lower() == 'linux'):
         msg = 'function currently implemented only for linux and macOS'
