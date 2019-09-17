@@ -154,18 +154,12 @@ def write_buildinfo_file(prefix, workdir, rel=False):
                         msg += 'cannot be relocated.'
                         tty.warn(msg)
 
-            #  Check if the file contains a string with the installroot.
-            #  This cuts down on the number of files added to the list
-            #  of files potentially needing relocation
-            elif relocate.strings_contains_installroot(
-                    path_name,
-                    spack.store.layout.root):
-                if relocate.needs_binary_relocation(m_type, m_subtype):
-                    rel_path_name = os.path.relpath(path_name, prefix)
-                    binary_to_relocate.append(rel_path_name)
-                elif relocate.needs_text_relocation(m_type, m_subtype):
-                    rel_path_name = os.path.relpath(path_name, prefix)
-                    text_to_relocate.append(rel_path_name)
+            if relocate.needs_binary_relocation(m_type, m_subtype):
+                rel_path_name = os.path.relpath(path_name, prefix)
+                binary_to_relocate.append(rel_path_name)
+            if relocate.needs_text_relocation(m_type, m_subtype):
+                rel_path_name = os.path.relpath(path_name, prefix)
+                text_to_relocate.append(rel_path_name)
 
     # Create buildinfo data and write it to disk
     buildinfo = {}

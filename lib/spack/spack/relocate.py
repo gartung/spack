@@ -6,6 +6,7 @@
 
 import os
 import re
+import platform
 import spack.repo
 import spack.cmd
 import llnl.util.lang
@@ -262,13 +263,14 @@ def modify_object_machotools(cur_path, rpaths, deps, idpath,
     The old install dir in LC_RPATH is replaced with the new install dir using
     using py-machotools
     """
-    from machotools import rewriter_factory
-    with rewriter_factory(cur_path) as rewriter:
-        if new_idpath:
-            rewriter.install_name = new_idpath
-        for orig, new in zip(deps, new_deps):
-            rewriter.change_dependency(orig, new)
-        rewriter.extend_rpaths(new_rpaths)
+    import machotools
+    rewriter = machotools.rewriter_factory(cur_path)
+    if machotools.detect.is_dylib(cur_path):
+        rewriter.install_name = new_idpath
+    for orig, new in zip(deps, new_deps):
+        rewriter.change_dependency(orig, new)
+    rewriter.extend_rpaths(new_rpaths)
+    rewriter.commit()
     return
 
 def machotools_get_paths(path_name):
@@ -278,14 +280,15 @@ def machotools_get_paths(path_name):
     dependiencies and library id.
     Returns these values.
     """
-    from machotools import rewriter_factory
+    import machotools
     idpath = None
-    rpaths = []
-    deps = []
-    with rewriter_factory(path_name) as rewriter:
+    rpaths = list()
+    deps = list()
+    rewriter = machotools.rewriter_factory(path_name)
+    if machotools.detect.is_dylib(path_name):
         idpath = rewriter.install_name
-        rpaths = rewriter.rpaths
-        deps = rewriter.dependencies
+    rpaths = rewriter.rpaths
+    deps = rewriter.dependencies
     return rpaths, deps, idpath
 
 def strings_contains_installroot(path_name, root_dir):
@@ -438,7 +441,7 @@ def make_macho_binary_relative(cur_path_names, orig_path_names, old_dir,
     Replace old RPATHs with paths relative to old_dir in binary files
     """
     for cur_path, orig_path in zip(cur_path_names, orig_path_names):
-        rpaths, deps, idpath = macho_get_paths(cur_path)
+        rpaths, deps, idpath = machotools_get_paths(cur_path)
         (new_rpaths,
          new_deps,
          new_idpath) = macho_make_paths_relative(orig_path, old_dir,
