@@ -321,18 +321,19 @@ def build_tarball(spec, outdir, force=False, rel=False, unsigned=False,
     # create info for later relocation and create tar
     write_buildinfo_file(spec.prefix, workdir, rel=rel)
 
+
     # optionally make the paths in the binaries relative to each other
     # in the spack install tree before creating tarball
     if rel:
         try:
-            make_package_relative(workdir, spec.prefix, allow_root)
+            make_package_relative(workdir, spec, allow_root)
         except Exception as e:
             shutil.rmtree(workdir)
             shutil.rmtree(tarfile_dir)
             tty.die(e)
     else:
         try:
-            make_package_placeholder(workdir, spec.prefix, allow_root)
+            make_package_placeholder(workdir, spec, allow_root)
         except Exception as e:
             shutil.rmtree(workdir)
             shutil.rmtree(tarfile_dir)
@@ -416,11 +417,12 @@ def download_tarball(spec):
     return None
 
 
-def make_package_relative(workdir, prefix, allow_root):
+def make_package_relative(workdir, spec, allow_root):
     """
     Change paths in binaries to relative paths. Change absolute symlinks
     to relative symlinks.
     """
+    prefix=spec.prefix
     buildinfo = read_buildinfo_file(workdir)
     old_path = buildinfo['buildpath']
     orig_path_names = list()
@@ -428,8 +430,12 @@ def make_package_relative(workdir, prefix, allow_root):
     for filename in buildinfo['relocate_binaries']:
         orig_path_names.append(os.path.join(prefix, filename))
         cur_path_names.append(os.path.join(workdir, filename))
-    relocate.make_binary_relative(cur_path_names, orig_path_names,
-                                  old_path, allow_root)
+    if spec.architecture.platform == 'darwin':
+        relocate.make_macho_binary_relative(cur_path_names, orig_path_names,
+                                            old_path, allow_root)
+    else:
+        relocate.make_elf_binary_relative(cur_path_names, orig_path_names,
+                                          old_path, allow_root)
     orig_path_names = list()
     cur_path_names = list()
     for filename in buildinfo.get('relocate_links', []):
@@ -440,13 +446,14 @@ def make_package_relative(workdir, prefix, allow_root):
 
 def make_package_placeholder(workdir, prefix, allow_root):
     """
-    Change paths in binaries to placeholder paths
+    Check if package binaries are relocatable
+    Change links to placeholder links
     """
     buildinfo = read_buildinfo_file(workdir)
     cur_path_names = list()
     for filename in buildinfo['relocate_binaries']:
         cur_path_names.append(os.path.join(workdir, filename))
-    relocate.make_binary_placeholder(cur_path_names, allow_root)
+    relocate.check_files_relocatable(cur_path_names, allow_root)
 
     cur_path_names = list()
     for filename in buildinfo.get('relocate_links', []):
@@ -454,7 +461,7 @@ def make_package_placeholder(workdir, prefix, allow_root):
     relocate.make_link_placeholder(cur_path_names, workdir, prefix)
 
 
-def relocate_package(workdir, allow_root):
+def relocate_package(workdir, spec, allow_root):
     """
     Relocate the given package
     """
@@ -485,7 +492,12 @@ def relocate_package(workdir, allow_root):
         for filename in buildinfo['relocate_binaries']:
             path_name = os.path.join(workdir, filename)
             path_names.add(path_name)
-        relocate.relocate_binary(path_names, old_path, new_path, allow_root)
+        if spec.architecture.platform == 'darwin':
+            relocate.relocate_macho_binary(path_names, old_path, new_path,
+                                           allow_root)
+        else:
+            relocate.relocate_elf_binary(path_names, old_path, new_path,
+                                         allow_root)
         path_names = set()
         for filename in buildinfo.get('relocate_links', []):
             path_name = os.path.join(workdir, filename)
@@ -572,7 +584,7 @@ def extract_tarball(spec, filename, allow_root=False, unsigned=False,
     os.remove(specfile_path)
 
     try:
-        relocate_package(workdir, allow_root)
+        relocate_package(workdir, spec, allow_root)
     except Exception as e:
         shutil.rmtree(workdir)
         tty.die(e)
