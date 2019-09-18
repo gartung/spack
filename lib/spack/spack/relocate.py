@@ -41,6 +41,23 @@ class BinaryStringReplacementException(spack.error.SpackError):
             (file_path, old_len, new_len))
 
 
+class MissingMachotoolsException(spack.error.SpackError):
+    """
+    Raised when the size of the file changes after binary path substitution.
+    """
+
+    def __init__(self, error):
+        super(MissingMachotoolsException, self).__init__(
+            "%s\n"
+            "Python package machotools needs to be avaiable to list\n"
+            "and modify a mach-o binary's rpaths, deps and id.\n"
+            "Use virtualenv with pip install machotools or\n"
+            "use spack to install the py-machotools package\n"
+            "spack install py-machotools\n"
+            "spack activate py-machotools\n"
+            "spack load python\n" 
+             % error)
+
 def get_patchelf():
     """
     Builds and installs spack patchelf package on linux platforms
@@ -265,9 +282,8 @@ def modify_object_machotools(cur_path, rpaths, deps, idpath,
     """
     try:
         import machotools
-    except ImportError:
-        raise ImportError('machotools pyhton package needs to be avaiable')
-
+    except ImportError as e:
+        raise MissingMachotoolsException(e)
     rewriter = machotools.rewriter_factory(cur_path)
     if machotools.detect.is_dylib(cur_path):
         rewriter.install_name = new_idpath
@@ -288,8 +304,8 @@ def machotools_get_paths(path_name):
     """
     try:
         import machotools
-    except ImportError:
-        raise ImportError('machotools python package needs to be avaiable')
+    except ImportError as e:
+        raise MissingMachotoolsException(e)
     idpath = None
     rpaths = list()
     deps = list()
