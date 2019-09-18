@@ -263,7 +263,11 @@ def modify_object_machotools(cur_path, rpaths, deps, idpath,
     The old install dir in LC_RPATH is replaced with the new install dir using
     using py-machotools
     """
-    import machotools
+    try:
+        import machotools
+    except ImportError:
+        raise ImportError('machotools pyhton package needs to be avaiable')
+
     rewriter = machotools.rewriter_factory(cur_path)
     if machotools.detect.is_dylib(cur_path):
         rewriter.install_name = new_idpath
@@ -282,7 +286,10 @@ def machotools_get_paths(path_name):
     dependiencies and library id.
     Returns these values.
     """
-    import machotools
+    try:
+        import machotools
+    except ImportError:
+        raise ImportError('machotools python package needs to be avaiable')
     idpath = None
     rpaths = list()
     deps = list()
