@@ -315,7 +315,6 @@ def build_tarball(spec, outdir, force=False, rel=False, unsigned=False,
     # create info for later relocation and create tar
     write_buildinfo_file(spec.prefix, workdir, rel=rel)
 
-
     # optionally make the paths in the binaries relative to each other
     # in the spack install tree before creating tarball
     if rel:
@@ -416,7 +415,7 @@ def make_package_relative(workdir, spec, allow_root):
     Change paths in binaries to relative paths. Change absolute symlinks
     to relative symlinks.
     """
-    prefix=spec.prefix
+    prefix = spec.prefix
     buildinfo = read_buildinfo_file(workdir)
     old_path = buildinfo['buildpath']
     orig_path_names = list()

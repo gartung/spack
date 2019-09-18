@@ -252,7 +252,7 @@ def modify_macho_object(cur_path, rpaths, deps, idpath,
 
 
 def modify_object_machotools(cur_path, rpaths, deps, idpath,
-                                   new_rpaths, new_deps, new_idpath):
+                             new_rpaths, new_deps, new_idpath):
     """
     Modify MachO binary path_name by replacing old_dir with new_dir
     or the relative path to spack install root.
@@ -274,6 +274,7 @@ def modify_object_machotools(cur_path, rpaths, deps, idpath,
     rewriter.commit()
     return
 
+
 def machotools_get_paths(path_name):
     """
     Examines the output of otool -l path_name for these three fields:
@@ -291,6 +292,7 @@ def machotools_get_paths(path_name):
     rpaths = rewriter.rpaths
     deps = rewriter.dependencies
     return rpaths, deps, idpath
+
 
 def strings_contains_installroot(path_name, root_dir):
     """
@@ -588,7 +590,7 @@ def file_is_relocatable(file):
 
         ValueError: if the file does not exist or the path is not absolute
     """
-   
+
     if not (platform.system().lower() == 'darwin'
             or platform.system().lower() == 'linux'):
         msg = 'function currently implemented only for linux and macOS'
