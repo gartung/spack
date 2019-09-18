@@ -269,7 +269,8 @@ def modify_object_machotools(cur_path, rpaths, deps, idpath,
         rewriter.install_name = new_idpath
     for orig, new in zip(deps, new_deps):
         rewriter.change_dependency(orig, new)
-    rewriter.extend_rpaths(new_rpaths)
+    for orig, new in zip(rpaths, new_rpaths):
+        rewriter.append_rpath(new)
     rewriter.commit()
     return
 
@@ -362,7 +363,7 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
         f.truncate()
 
 
-def relocate_macho_binary(path_names, old_dir, new_dir, allow_root):
+def relocate_macho_binaries(path_names, old_dir, new_dir, allow_root):
     """
     Change old_dir to new_dir in RPATHs of elf or mach-o files
     Account for the case where old_dir is now a placeholder
@@ -398,7 +399,7 @@ def relocate_macho_binary(path_names, old_dir, new_dir, allow_root):
                      (path_name, new_dir, old_dir))
 
 
-def relocate_elf_binary(path_names, old_dir, new_dir, allow_root):
+def relocate_elf_binaries(path_names, old_dir, new_dir, allow_root):
     """
     Change old_dir to new_dir in RPATHs of elf binaries
     Account for the case where old_dir is now a placeholder

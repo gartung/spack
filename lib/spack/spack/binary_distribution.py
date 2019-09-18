@@ -487,11 +487,11 @@ def relocate_package(workdir, spec, allow_root):
             path_name = os.path.join(workdir, filename)
             path_names.add(path_name)
         if spec.architecture.platform == 'darwin':
-            relocate.relocate_macho_binary(path_names, old_path, new_path,
-                                           allow_root)
+            relocate.relocate_macho_binaries(path_names, old_path, new_path,
+                                             allow_root)
         else:
-            relocate.relocate_elf_binary(path_names, old_path, new_path,
-                                         allow_root)
+            relocate.relocate_elf_binaries(path_names, old_path, new_path,
+                                           allow_root)
         path_names = set()
         for filename in buildinfo.get('relocate_links', []):
             path_name = os.path.join(workdir, filename)
