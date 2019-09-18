@@ -437,11 +437,12 @@ def make_package_relative(workdir, spec, allow_root):
     relocate.make_link_relative(cur_path_names, orig_path_names)
 
 
-def make_package_placeholder(workdir, prefix, allow_root):
+def make_package_placeholder(workdir, spec, allow_root):
     """
     Check if package binaries are relocatable
     Change links to placeholder links
     """
+    prefix = spec.prefix
     buildinfo = read_buildinfo_file(workdir)
     cur_path_names = list()
     for filename in buildinfo['relocate_binaries']:

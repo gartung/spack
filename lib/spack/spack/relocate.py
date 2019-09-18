@@ -55,8 +55,9 @@ class MissingMachotoolsException(spack.error.SpackError):
             "use spack to install the py-machotools package\n"
             "spack install py-machotools\n"
             "spack activate py-machotools\n"
-            "spack load python\n" 
-             % error)
+            "spack load python\n"
+            % error)
+
 
 def get_patchelf():
     """
