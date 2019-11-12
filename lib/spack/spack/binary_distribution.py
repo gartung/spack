@@ -560,7 +560,7 @@ def relocate_package(workdir, spec, allow_root):
                                              new_path, allow_root)
         else:
             relocate.relocate_elf_binaries(path_names, old_path,
-                                           new_path, allow_root)
+                                           new_path, allow_root, comp_path)
         path_names = set()
         for filename in buildinfo.get('relocate_links', []):
             path_name = os.path.join(workdir, filename)

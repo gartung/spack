@@ -98,7 +98,7 @@ def get_existing_elf_rpaths(path_name):
     try:
         output = patchelf('--print-rpath', '%s' %
                           path_name, output=str, error=str)
-        return output.rstrip('\n').split(':')
+        return output.rstrip('\n').split(':')[2:]
     except ProcessError as e:
         tty.debug('patchelf --print-rpath produced an error on %s' %
                   path_name, e)
@@ -475,7 +475,8 @@ def relocate_macho_binaries(path_names, old_dir, new_dir, allow_root):
                      (path_name, new_dir, old_dir))
 
 
-def relocate_elf_binaries(path_names, old_dir, new_dir, allow_root):
+def relocate_elf_binaries(path_names, old_dir, new_dir, allow_root,
+                          comp_path):
     """
     Change old_dir to new_dir in RPATHs of elf binaries
     Account for the case where old_dir is now a placeholder
@@ -490,6 +491,9 @@ def relocate_elf_binaries(path_names, old_dir, new_dir, allow_root):
             # one pass to replace old_dir
             new_rpaths = substitute_rpath(n_rpaths,
                                           old_dir, new_dir)
+            if not comp_path in new_rpaths:
+                new_rpaths.append(comp_path+os.sep+'lib')
+                new_rpaths.append(comp_path+os.sep+'lib64')
             modify_elf_object(path_name, new_rpaths)
             if not new_dir == old_dir:
                 if len(new_dir) <= len(old_dir):
