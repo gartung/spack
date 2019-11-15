@@ -472,17 +472,23 @@ def relocate_elf_binaries(path_names, spec):
     Change old_dir to new_dir in RPATHs of elf binaries
     Account for the case where old_dir is now a placeholder
     """
-    new_rpaths = []
     comp_path = os.path.dirname(os.path.dirname(spec.package.compiler.cc))
     n_rpaths = spack.build_environment.get_rpaths(spec.package)
-    if comp_path not in n_rpaths:
-        new_rpaths.append(comp_path + os.sep + 'lib')
-        new_rpaths.append(comp_path + os.sep + 'lib64')
-    new_rpaths.extend(n_rpaths)
+    new_rpaths = []
+    rpathset = set()
+    for n_rpath in n_rpaths:
+        if n_rpath not in rpathset:
+            rpathset.add(n_rpath)
+            new_rpaths.append(n_rpath)
+    comp_path_lib = comp_path + os.sep + 'lib'
+    if comp_path_lib not in rpathset:
+        new_rpaths.append(comp_path_lib)
+    comp_path_lib64 = comp_path + os.sep + 'lib64'
+    if comp_path_lib64 not in rpathset:
+        new_rpaths.append(comp_path_lib64)
 
     for path_name in path_names:
         modify_elf_object(path_name, new_rpaths)
-
 
 def make_link_relative(cur_path_names, orig_path_names):
     """
