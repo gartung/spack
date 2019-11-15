@@ -561,35 +561,32 @@ def relocate_package(spec, allow_root):
         relocate.replace_prefix_text(path_name, sbangre, sbangnew)
         relocate.replace_prefix_text(path_name, old_path, new_path)
 
-    if len(new_prefix) > len(old_prefix):
-        raise BinaryTextReplaceException(old_prefix, new_prefix)
+    if new_prefix != old_prefix:
+        files_to_relocate = list(filter(
+            lambda pathname: not relocate.file_is_relocatable(
+                pathname, paths_to_relocate=[old_path, old_prefix]),
+            map(lambda filename: os.path.join(workdir, filename),
+                buildinfo['relocate_binaries'])))
 
-    if rel:
-        if new_prefix != old_prefix:
-            files_to_relocate = list(filter(
-                lambda pathname: not relocate.file_is_relocatable(
-                    pathname, paths_to_relocate=[old_path, old_prefix]),
-                map(lambda filename: os.path.join(workdir, filename),
-                    buildinfo['relocate_binaries'])))
-
+        if len(new_prefix) <= len(old_prefix):
             for path_name in files_to_relocate:
                 relocate.replace_prefix_bin(path_name, old_prefix, new_prefix)
                 relocate.replace_prefix_bin(path_name, old_path, new_path)
                 relocate.replace_prefix_bin(path_name,
                                             old_spack_prefix,
                                             new_spack_prefix)
-    else:
-        path_names = set()
-        for filename in buildinfo['relocate_binaries']:
-            path_name = os.path.join(workdir, filename)
-            path_names.add(path_name)
-
-        if spec.architecture.platform == 'darwin':
-            relocate.relocate_macho_binaries(path_names, old_path,
-                                             new_path)
         else:
-            relocate.relocate_elf_binaries(path_names, spec)
+            if len(files_to_relocate) > 0:
+                raise BinaryTextReplaceException(old_prefix, new_prefix)
 
+        if not rel:
+            if spec.architecture.platform == 'darwin':
+                relocate.relocate_macho_binaries(path_names, old_path,
+                                                 new_path)
+            else:
+                relocate.relocate_elf_binaries(path_names, spec)
+
+    if not rel:
         path_names = set()
         for filename in buildinfo.get('relocate_links', []):
             path_name = os.path.join(workdir, filename)
