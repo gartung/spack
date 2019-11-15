@@ -98,7 +98,7 @@ def get_existing_elf_rpaths(path_name):
     try:
         output = patchelf('--print-rpath', '%s' %
                           path_name, output=str, error=str)
-        return output.rstrip('\n').split(':')[2:]
+        return output.rstrip('\n').split(':')
     except ProcessError as e:
         tty.debug('patchelf --print-rpath produced an error on %s' %
                   path_name, e)
