@@ -231,22 +231,40 @@ def macho_make_paths_placeholder(rpaths, deps, idpath):
     return (new_rpaths, new_deps, new_idpath)
 
 
-def macho_replace_paths(old_dir, new_dir, rpaths, deps, idpath):
+def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_rpaths):
     """
     Replace old_dir with new_dir in rpaths, deps and idpath
     and return replacements
     """
     new_idpath = None
     if idpath:
-        new_idpath = idpath.replace(old_dir, new_dir)
+        new_idpath = '@rpath/%s' % os.path.basename(idpath)
+        tty.msg('new_idpath %s' % new_idpath)
     new_rpaths = list()
     new_deps = list()
-    for rpath in rpaths:
-        new_rpath = rpath.replace(old_dir, new_dir)
-        new_rpaths.append(new_rpath)
     for dep in deps:
-        new_dep = dep.replace(old_dir, new_dir)
+        new_dep = dep
+        depname = dep.split(os.sep)[-1]
+        if re.search(old_dir, dep):
+            new_dep = '@rpath/%s' % depname
+        if re.search(new_dir, dep):
+            new_dep = '@rpath/%s' % depname
+        tty.msg('new_dep %s' % new_dep)
         new_deps.append(new_dep)
+    for rpath in rpaths:
+        new_rpath = rpath
+        if re.match(old_dir, rpath):
+            hash = rpath.split(os.sep)[-2].split('-')[-1][:7]
+            tty.msg('hash %s' % hash)
+            for env_rpath in env_rpaths:
+                if re.search(hash, env_rpath):
+                    path_parts=env_rpath.split(os.sep)[:-1]
+                    path_parts.append(rpath.split(os.sep)[-1])
+                    tty.msg('%s, %s' % (hash, path_parts))
+                    new_rpath=os.sep.join(path_parts)
+                    new_rpaths.append('%s' % new_rpath)    
+                    tty.msg('%s, %s' % (hash, new_rpath)) 
+                    break
     return new_rpaths, new_deps, new_idpath
 
 
@@ -278,6 +296,8 @@ def modify_macho_object(cur_path, rpaths, deps, idpath,
         for orig, new in zip(rpaths, new_rpaths):
             if not orig == new:
                 install_name_tool('-rpath', orig, new, str(cur_path))
+    else:
+       tty.debug('%s\ndoes not match length of\n%s'%(rpaths, new_rpaths))
 
     return
 
@@ -429,13 +449,37 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
         f.truncate()
 
 
-def relocate_macho_binaries(path_names, old_dir, new_dir):
+def relocate_macho_binaries(path_names, old_dir, new_dir, spec):
     """
     Change old_dir to new_dir in LC_RPATH of mach-o files (on macOS)
     Change old_dir to new_dir in LC_ID and LC_DEP of mach-o files
     Account for the case where old_dir is now a placeholder
     """
     placeholder = set_placeholder(old_dir)
+
+    comp_path = os.path.dirname(os.path.dirname(spec.package.compiler.cc))
+    fcomp_path = os.path.dirname(os.path.dirname(spec.package.compiler.f77))
+    n_rpaths = spack.build_environment.get_rpaths(spec.package)
+    env_rpaths = []
+    rpathset = set()
+    for n_rpath in n_rpaths:
+        if n_rpath not in rpathset:
+            rpathset.add(n_rpath)
+            env_rpaths.append(n_rpath)
+    comp_path_lib = comp_path + os.sep + 'lib'
+    if comp_path_lib not in rpathset:
+        env_rpaths.append(comp_path_lib)
+    comp_path_lib64 = comp_path + os.sep + 'lib64'
+    if comp_path_lib64 not in rpathset:
+        env_rpaths.append(comp_path_lib64)
+    fcomp_path_lib = fcomp_path + os.sep + 'lib'
+    if fcomp_path_lib not in rpathset:
+        env_rpaths.append(fcomp_path_lib)
+    fcomp_path_lib64 = fcomp_path + os.sep + 'lib64'
+    if fcomp_path_lib64 not in rpathset:
+        env_rpaths.append(fcomp_path_lib64)
+    tty.msg('ENV RPATHS %s'%env_rpaths)
+
     for path_name in path_names:
         if path_name.endswith('.o'):
             continue
@@ -443,22 +487,9 @@ def relocate_macho_binaries(path_names, old_dir, new_dir):
             continue
         if platform.system().lower() == 'darwin':
             rpaths, deps, idpath = macho_get_paths(path_name)
-            # one pass to replace placeholder
-            (n_rpaths,
-             n_deps,
-             n_idpath) = macho_replace_paths(placeholder,
-                                             new_dir,
-                                             rpaths,
-                                             deps,
-                                             idpath)
-            # another pass to replace old_dir
-            (new_rpaths,
-             new_deps,
-             new_idpath) = macho_replace_paths(old_dir,
-                                               new_dir,
-                                               n_rpaths,
-                                               n_deps,
-                                               n_idpath)
+            tty.msg('OLD RPATHS %s DEPS %s ID %s' % (rpaths, deps, idpath))
+            new_rpaths, new_deps, new_idpath = macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_rpaths)
+            tty.msg('NEW RPATHS %s DEPS %s ID %s' %(new_rpaths, new_deps, new_idpath))
             modify_macho_object(path_name,
                                 rpaths, deps, idpath,
                                 new_rpaths, new_deps, new_idpath)
