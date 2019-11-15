@@ -564,7 +564,8 @@ def relocate_package(spec, allow_root):
     if new_prefix != old_prefix:
         files_to_relocate = list(filter(
             lambda pathname: not relocate.file_is_relocatable(
-                pathname, paths_to_relocate=[old_path, old_prefix]),
+                pathname, paths_to_relocate=[old_path, old_prefix,
+                                             old_spack_prefix]),
             map(lambda filename: os.path.join(workdir, filename),
                 buildinfo['relocate_binaries'])))
 
