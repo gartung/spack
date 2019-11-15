@@ -582,10 +582,10 @@ def relocate_package(spec, allow_root):
 
         if not rel:
             if spec.architecture.platform == 'darwin':
-                relocate.relocate_macho_binaries(path_names, old_path,
+                relocate.relocate_macho_binaries(files_to_relocate, old_path,
                                                  new_path)
             else:
-                relocate.relocate_elf_binaries(path_names, spec)
+                relocate.relocate_elf_binaries(files_to_relocate, spec)
 
     if not rel:
         path_names = set()

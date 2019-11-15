@@ -391,9 +391,11 @@ def installtarball(args):
 def install_tarball(spec, args):
     s = Spec(spec)
     if s.external:
-        tty.warn("Spec marked external: %s" % spec.format())
+        tty.warn("Skipping pec marked external: %s" % spec.format())
+        return
     if s.virtual:
-        tty.warn("Spec marked virtual:  %s" % spec.format())
+        tty.warn("Skipping spec marked virtual:  %s" % spec.format())
+        return
     for d in s.dependencies(deptype=('link', 'run')):
         tty.msg("Installing buildcache for dependency spec %s" % d)
         install_tarball(d, args)
