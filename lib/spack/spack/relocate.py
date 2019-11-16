@@ -239,7 +239,6 @@ def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_r
     new_idpath = None
     if idpath:
         new_idpath = '@rpath/%s' % os.path.basename(idpath)
-        tty.msg('new_idpath %s' % new_idpath)
     new_rpaths = list()
     new_deps = list()
     for dep in deps:
@@ -249,22 +248,21 @@ def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_r
             new_dep = '@rpath/%s' % depname
         if re.search(new_dir, dep):
             new_dep = '@rpath/%s' % depname
-        tty.msg('new_dep %s' % new_dep)
         new_deps.append(new_dep)
-    for rpath in rpaths:
-        new_rpath = rpath
-        if re.match(old_dir, rpath):
-            hash = rpath.split(os.sep)[-2].split('-')[-1][:7]
-            tty.msg('hash %s' % hash)
-            for env_rpath in env_rpaths:
-                if re.search(hash, env_rpath):
-                    path_parts=env_rpath.split(os.sep)[:-1]
-                    path_parts.append(rpath.split(os.sep)[-1])
-                    tty.msg('%s, %s' % (hash, path_parts))
-                    new_rpath=os.sep.join(path_parts)
-                    new_rpaths.append('%s' % new_rpath)    
-                    tty.msg('%s, %s' % (hash, new_rpath)) 
-                    break
+    if len(rpaths) == len(env_rpaths):
+        new_rpaths.extend(env_rpaths)
+    else: 
+        for rpath in rpaths:
+            new_rpath = rpath
+            if re.match(old_dir, rpath):
+                hash = rpath.split(os.sep)[-2].split('-')[-1][:7]
+                for env_rpath in env_rpaths:
+                    if re.search(hash, env_rpath):
+                        path_parts=env_rpath.split(os.sep)[:-1]
+                        path_parts.append(rpath.split(os.sep)[-1])
+                        new_rpath=os.sep.join(path_parts)
+                        new_rpaths.append('%s' % new_rpath)    
+                        break
     return new_rpaths, new_deps, new_idpath
 
 
@@ -296,8 +294,6 @@ def modify_macho_object(cur_path, rpaths, deps, idpath,
         for orig, new in zip(rpaths, new_rpaths):
             if not orig == new:
                 install_name_tool('-rpath', orig, new, str(cur_path))
-    else:
-       tty.debug('%s\ndoes not match length of\n%s'%(rpaths, new_rpaths))
 
     return
 
@@ -466,19 +462,19 @@ def relocate_macho_binaries(path_names, old_dir, new_dir, spec):
         if n_rpath not in rpathset:
             rpathset.add(n_rpath)
             env_rpaths.append(n_rpath)
-    comp_path_lib = comp_path + os.sep + 'lib'
-    if comp_path_lib not in rpathset:
-        env_rpaths.append(comp_path_lib)
-    comp_path_lib64 = comp_path + os.sep + 'lib64'
-    if comp_path_lib64 not in rpathset:
-        env_rpaths.append(comp_path_lib64)
-    fcomp_path_lib = fcomp_path + os.sep + 'lib'
-    if fcomp_path_lib not in rpathset:
-        env_rpaths.append(fcomp_path_lib)
-    fcomp_path_lib64 = fcomp_path + os.sep + 'lib64'
-    if fcomp_path_lib64 not in rpathset:
-        env_rpaths.append(fcomp_path_lib64)
-    tty.msg('ENV RPATHS %s'%env_rpaths)
+#    comp_path_lib = comp_path + os.sep + 'lib'
+#    if comp_path_lib not in rpathset:
+#        env_rpaths.append(comp_path_lib)
+#    comp_path_lib64 = comp_path + os.sep + 'lib64'
+#    if comp_path_lib64 not in rpathset:
+#        env_rpaths.append(comp_path_lib64)
+#    fcomp_path_lib = fcomp_path + os.sep + 'lib'
+#    if fcomp_path_lib not in rpathset:
+#        env_rpaths.append(fcomp_path_lib)
+#    fcomp_path_lib64 = fcomp_path + os.sep + 'lib64'
+#    if fcomp_path_lib64 not in rpathset:
+#        env_rpaths.append(fcomp_path_lib64)
+#    tty.msg('ENV RPATHS %s'%env_rpaths)
 
     for path_name in path_names:
         if path_name.endswith('.o'):
@@ -511,12 +507,12 @@ def relocate_elf_binaries(path_names, spec):
         if n_rpath not in rpathset:
             rpathset.add(n_rpath)
             new_rpaths.append(n_rpath)
-    comp_path_lib = comp_path + os.sep + 'lib'
-    if comp_path_lib not in rpathset:
-        new_rpaths.append(comp_path_lib)
-    comp_path_lib64 = comp_path + os.sep + 'lib64'
-    if comp_path_lib64 not in rpathset:
-        new_rpaths.append(comp_path_lib64)
+#    comp_path_lib = comp_path + os.sep + 'lib'
+#    if comp_path_lib not in rpathset:
+#        new_rpaths.append(comp_path_lib)
+#    comp_path_lib64 = comp_path + os.sep + 'lib64'
+#    if comp_path_lib64 not in rpathset:
+#        new_rpaths.append(comp_path_lib64)
 
     for path_name in path_names:
         modify_elf_object(path_name, new_rpaths)

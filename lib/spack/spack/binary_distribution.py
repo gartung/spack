@@ -672,7 +672,9 @@ def extract_tarball(spec, filename, allow_root=False, unsigned=False,
     # the base of the install prefix is used when creating the tarball
     # the basename of the prefix directory must end in the dag hash
     # otherwise this won't work
-    workdir = glob.glob('%s/*%s' % (tmpdir, spec.dag_hash()))[0]
+    known_file = glob.glob('%s/*/.spack/binary_distribution' % tmpdir)[0]
+    workdir = os.sep.join(known_file.split(os.sep)[:-2])
+    tty.msg('workdir %s'%workdir)
     install_tree(workdir, spec.prefix, symlinks=True)
 
     # cleanup
