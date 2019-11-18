@@ -560,24 +560,27 @@ def relocate_package(spec, allow_root):
         relocate.replace_prefix_text(path_name, old_prefix, new_prefix)
         relocate.replace_prefix_text(path_name, sbangre, sbangnew)
         relocate.replace_prefix_text(path_name, old_path, new_path)
+    if rel:
+        if new_prefix != old_prefix:
+            files_to_relocate = list(filter(
+                lambda pathname: not relocate.file_is_relocatable(
+                    pathname, paths_to_relocate=[old_path, old_prefix]),
+                map(lambda filename: os.path.join(workdir, filename),
+                    buildinfo['relocate_binaries'])))
+    else:
+        path_names = set()
+        for filename in buildinfo['relocate_binaries']:
+            path_name = os.path.join(workdir, filename)
+            path_names.add(path_name)
 
-    if new_prefix != old_prefix:
-        files_to_relocate = list(filter(
-            lambda pathname: not relocate.file_is_relocatable(
-                pathname, paths_to_relocate=[old_path, old_prefix,
-                                             old_spack_prefix]),
-            map(lambda filename: os.path.join(workdir, filename),
-                buildinfo['relocate_binaries'])))
-
-        if not rel:
-            if spec.architecture.platform == 'darwin':
-                relocate.relocate_macho_binaries(files_to_relocate, old_path,
-                                                 new_path, spec)
-            else:
-                relocate.relocate_elf_binaries(files_to_relocate, spec)
-
+        if spec.architecture.platform == 'darwin':
+            relocate.relocate_macho_binaries(path_names, old_path,
+                                         new_path, spec)
+        else:
+            relocate.relocate_elf_binaries(path_names, spec)
+    
         if len(new_prefix) <= len(old_prefix):
-            for path_name in files_to_relocate:
+            for path_name in path_names:
                 relocate.replace_prefix_bin(path_name, old_prefix, new_prefix)
                 relocate.replace_prefix_bin(path_name, old_path, new_path)
                 relocate.replace_prefix_bin(path_name,
@@ -587,12 +590,11 @@ def relocate_package(spec, allow_root):
             if len(files_to_relocate) > 0:
                 raise BinaryTextReplaceException(old_prefix, new_prefix)
 
-    if not rel:
-        path_names = set()
-        for filename in buildinfo.get('relocate_links', []):
-            path_name = os.path.join(workdir, filename)
-            path_names.add(path_name)
-        relocate.relocate_links(path_names, old_path, new_path)
+    path_names = set()
+    for filename in buildinfo.get('relocate_links', []):
+        path_name = os.path.join(workdir, filename)
+        path_names.add(path_name)
+    relocate.relocate_links(path_names, old_path, new_path)
 
 
 def extract_tarball(spec, filename, allow_root=False, unsigned=False,
@@ -658,7 +660,6 @@ def extract_tarball(spec, filename, allow_root=False, unsigned=False,
     # directory layout has changed and the  buildcache cannot be installed
     # if it was created with relative rpaths or for macho binaries
     if (old_relative_prefix != new_relative_prefix and (rel)):
-      #  or spec.architecture.platform == "darwin")):
         shutil.rmtree(tmpdir)
         msg = "Package tarball was created from an install "
         msg += "prefix with a different directory layout. "

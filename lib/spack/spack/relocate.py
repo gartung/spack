@@ -251,7 +251,7 @@ def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_r
         new_deps.append(new_dep)
     if len(rpaths) == len(env_rpaths):
         new_rpaths.extend(env_rpaths)
-    else: 
+    else:
         for rpath in rpaths:
             new_rpath = rpath
             if re.match(old_dir, rpath):
@@ -261,7 +261,7 @@ def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_r
                         path_parts=env_rpath.split(os.sep)[:-1]
                         path_parts.append(rpath.split(os.sep)[-1])
                         new_rpath=os.sep.join(path_parts)
-                        new_rpaths.append('%s' % new_rpath)    
+                        new_rpaths.append('%s' % new_rpath)
                         break
     return new_rpaths, new_deps, new_idpath
 
@@ -317,7 +317,7 @@ def modify_object_macholib(cur_path, old_dir, new_dir):
         raise MissingMacholibException(e)
 
     def match_func(cpath):
-        rpath = cpath.replace(old_dir, new_dir)
+        rpath = cpath.replace('@rpath', new_dir)
         return rpath
 
     dll = MachO(cur_path)
@@ -438,6 +438,7 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
         if not pat.search(data):
             return
         ndata = pat.sub(replace, data)
+        tty.debug('In replace_prefix_bin(%s,%s,%s)'%(path_name, old_dir, new_dir))
         if not len(ndata) == original_data_len:
             raise BinaryStringReplacementException(
                 path_name, original_data_len, len(ndata))
@@ -462,19 +463,7 @@ def relocate_macho_binaries(path_names, old_dir, new_dir, spec):
         if n_rpath not in rpathset:
             rpathset.add(n_rpath)
             env_rpaths.append(n_rpath)
-#    comp_path_lib = comp_path + os.sep + 'lib'
-#    if comp_path_lib not in rpathset:
-#        env_rpaths.append(comp_path_lib)
-#    comp_path_lib64 = comp_path + os.sep + 'lib64'
-#    if comp_path_lib64 not in rpathset:
-#        env_rpaths.append(comp_path_lib64)
-#    fcomp_path_lib = fcomp_path + os.sep + 'lib'
-#    if fcomp_path_lib not in rpathset:
-#        env_rpaths.append(fcomp_path_lib)
-#    fcomp_path_lib64 = fcomp_path + os.sep + 'lib64'
-#    if fcomp_path_lib64 not in rpathset:
-#        env_rpaths.append(fcomp_path_lib64)
-#    tty.msg('ENV RPATHS %s'%env_rpaths)
+
 
     for path_name in path_names:
         if path_name.endswith('.o'):
@@ -483,15 +472,17 @@ def relocate_macho_binaries(path_names, old_dir, new_dir, spec):
             continue
         if platform.system().lower() == 'darwin':
             rpaths, deps, idpath = macho_get_paths(path_name)
-            tty.msg('OLD RPATHS %s DEPS %s ID %s' % (rpaths, deps, idpath))
+            tty.debug('OLD %s, %s, %s' % (rpaths, deps, idpath))
             new_rpaths, new_deps, new_idpath = macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_rpaths)
-            tty.msg('NEW RPATHS %s DEPS %s ID %s' %(new_rpaths, new_deps, new_idpath))
+            tty.debug('NEW %s, %s, %s' % (new_rpaths, new_deps, new_idpath))
             modify_macho_object(path_name,
                                 rpaths, deps, idpath,
                                 new_rpaths, new_deps, new_idpath)
         else:
-            modify_object_macholib(path_name, placeholder, new_dir)
-            modify_object_macholib(path_name, old_dir, new_dir)
+            modify_object_macholib(path_name, placeholder, '@rpath')
+            modify_object_macholib(path_name, old_dir, '@rpath')
+            for orpath, nrpath in zip(rpaths, new_rpaths):
+                replace_prefix_bin(path_name, orpath, nrpath)
 
 
 def relocate_elf_binaries(path_names, spec):
@@ -507,13 +498,6 @@ def relocate_elf_binaries(path_names, spec):
         if n_rpath not in rpathset:
             rpathset.add(n_rpath)
             new_rpaths.append(n_rpath)
-#    comp_path_lib = comp_path + os.sep + 'lib'
-#    if comp_path_lib not in rpathset:
-#        new_rpaths.append(comp_path_lib)
-#    comp_path_lib64 = comp_path + os.sep + 'lib64'
-#    if comp_path_lib64 not in rpathset:
-#        new_rpaths.append(comp_path_lib64)
-
     for path_name in path_names:
         modify_elf_object(path_name, new_rpaths)
 
@@ -680,6 +664,8 @@ def file_is_relocatable(file, paths_to_relocate=None):
     default_paths_to_relocate = [spack.store.layout.root, spack.paths.prefix]
     paths_to_relocate = paths_to_relocate or default_paths_to_relocate
 
+    if paths_to_relocate == None:
+        paths_to_relocate = [spack.store.layout.root, spack.paths.prefix]
     if not (platform.system().lower() == 'darwin'
             or platform.system().lower() == 'linux'):
         msg = 'function currently implemented only for linux and macOS'
