@@ -346,19 +346,19 @@ def modify_object_macholib(cur_path, old_dir, new_dir, env_rpaths):
     if len(env_rpaths) == len(rpaths):
         for rpath, nrpath in zip(rpaths, env_rpaths):
             if not nrpath == rpath:
-                replace_prefix_bin(cur_path, re.escape(rpath), nrpath)
+                replace_prefix_bin(cur_path, rpath, nrpath)
 
     new_deps = ['@rpath/%s' % os.path.basename(dep) for dep in deps if
                dep.startswith(old_dir)]
     if len(new_deps) == len(deps):
         for dep, ndep in zip(deps, new_deps):
             if not ndep == dep:
-                replace_prefix_bin(cur_path, re.escape(dep), ndep)
+                replace_prefix_bin(cur_path, dep, ndep)
 
     if dll.headers[0].filetype == 'dylib' :
         nident = '@rpath/%s' % os.path.basename(ident)
         if not nident == ident:
-            replace_prefix_bin(cur_path, re.escape(ident), nident)
+            replace_prefix_bin(cur_path, ident, nident)
     return
 
 
@@ -461,7 +461,7 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
         data = f.read()
         f.seek(0)
         original_data_len = len(data)
-        pat = re.compile(old_dir.encode('utf-8') + b'([^\0]*?)\0')
+        pat = re.compile(re.escape(old_dir).encode('utf-8') + b'([^\0]*?)\0')
         if not pat.search(data):
             return
         ndata = pat.sub(replace, data)

@@ -570,13 +570,13 @@ def relocate_package(spec, allow_root):
             if len(new_prefix) <= len(old_prefix):
                 for path_name in files_to_relocate:
                     relocate.replace_prefix_bin(path_name,
-                                                re.escape(old_prefix),
+                                                old_prefix,
                                                 new_prefix)
                     relocate.replace_prefix_bin(path_name,
-                                                re.escape(old_path),
+                                                old_path,
                                                 new_path)
                     relocate.replace_prefix_bin(path_name,
-                                                re.escape(old_spack_prefix),
+                                                old_spack_prefix,
                                                 new_spack_prefix)
             else:
                 if len(files_to_relocate) > 0:
@@ -596,13 +596,13 @@ def relocate_package(spec, allow_root):
         if len(new_prefix) <= len(old_prefix):
             for path_name in path_names:
                 relocate.replace_prefix_bin(path_name,
-                                            re.escape(old_prefix),
+                                            old_prefix,
                                             new_prefix)
                 relocate.replace_prefix_bin(path_name,
-                                            re.escape(old_path),
+                                            old_path,
                                             new_path)
                 relocate.replace_prefix_bin(path_name,
-                                            re.escape(old_spack_prefix),
+                                            old_spack_prefix,
                                             new_spack_prefix)
         else:
             if len(files_to_relocate) > 0:
