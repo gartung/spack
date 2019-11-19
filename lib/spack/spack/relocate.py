@@ -231,6 +231,24 @@ def macho_make_paths_placeholder(rpaths, deps, idpath):
     return (new_rpaths, new_deps, new_idpath)
 
 
+def macho_match_rpaths(old_dir, rpaths, env_rpaths):
+    """
+    Try to match rpath directory names using partial hash
+    """
+    new_rpaths = []
+    for rpath in rpaths:
+        new_rpath = rpath
+        if re.match(old_dir, rpath):
+            hash = rpath.split(os.sep)[-2].split('-')[-1][:7]
+            for env_rpath in env_rpaths:
+                if re.search(hash, env_rpath):
+                    path_parts=env_rpath.split(os.sep)[:-1]
+                    path_parts.append(rpath.split(os.sep)[-1])
+                    new_rpath=os.sep.join(path_parts)
+                    new_rpaths.append('%s' % new_rpath)
+                    break
+    return new_rpaths
+
 def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_rpaths):
     """
     Replace old_dir with new_dir in rpaths, deps and idpath
@@ -239,7 +257,6 @@ def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_r
     new_idpath = None
     if idpath:
         new_idpath = '@rpath/%s' % os.path.basename(idpath)
-    new_rpaths = list()
     new_deps = list()
     for dep in deps:
         new_dep = dep
@@ -249,20 +266,12 @@ def macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_r
         if re.search(new_dir, dep):
             new_dep = '@rpath/%s' % depname
         new_deps.append(new_dep)
+    new_rpaths = list()
     if len(rpaths) == len(env_rpaths):
-        new_rpaths.extend(env_rpaths)
+        new_rpaths = env_rpaths
     else:
-        for rpath in rpaths:
-            new_rpath = rpath
-            if re.match(old_dir, rpath):
-                hash = rpath.split(os.sep)[-2].split('-')[-1][:7]
-                for env_rpath in env_rpaths:
-                    if re.search(hash, env_rpath):
-                        path_parts=env_rpath.split(os.sep)[:-1]
-                        path_parts.append(rpath.split(os.sep)[-1])
-                        new_rpath=os.sep.join(path_parts)
-                        new_rpaths.append('%s' % new_rpath)
-                        break
+        new_rpaths = macho_match_rpaths(old_dir, rpaths, env_rpaths)
+
     return new_rpaths, new_deps, new_idpath
 
 
@@ -298,7 +307,7 @@ def modify_macho_object(cur_path, rpaths, deps, idpath,
     return
 
 
-def modify_object_macholib(cur_path, old_dir, new_dir):
+def modify_object_macholib(cur_path, old_dir, new_dir, env_rpaths):
     """
     Modify MachO binary path_name by replacing old_dir with new_dir
     or the relative path to spack install root.
@@ -315,24 +324,41 @@ def modify_object_macholib(cur_path, old_dir, new_dir):
         from macholib.MachO import MachO
     except ImportError as e:
         raise MissingMacholibException(e)
-
-    def match_func(cpath):
-        rpath = cpath.replace('@rpath', new_dir)
-        return rpath
-
     dll = MachO(cur_path)
-    dll.rewriteLoadCommands(match_func)
-    try:
-        f = open(dll.filename, 'rb+')
-        for header in dll.headers:
-            f.seek(0)
-            dll.write(f)
-        f.seek(0, 2)
-        f.flush()
-        f.close()
-    except Exception:
-        pass
 
+    import macholib.mach_o
+    ident = None
+    rpaths = list()
+    deps = list()
+    for header in dll.headers:
+        rpaths = [ data.rstrip(b'\0').decode('utf-8') for load_command, dylib_command, data in header.commands if 
+                 load_command.cmd == macholib.mach_o.LC_RPATH ]
+        deps = [ data.rstrip(b'\0').decode('utf-8') for load_command, dylib_command, data in header.commands if 
+                 load_command.cmd == macholib.mach_o.LC_LOAD_DYLIB ]
+        idents = [ data.rstrip(b'\0').decode('utf-8') for load_command, dylib_command, data in header.commands if
+                 load_command.cmd == macholib.mach_o.LC_ID_DYLIB ]
+        if len(idents) == 1:
+            ident = idents[0]
+    tty.msg('ident: %s' % ident)
+    tty.msg('deps: %s' % deps)
+    tty.msg('rpaths: %s' % rpaths)
+
+    if len(env_rpaths) == len(rpaths):
+        for rpath, nrpath in zip(rpaths, env_rpaths):
+            if not nrpath == rpath:
+                replace_prefix_bin(cur_path, re.escape(rpath), nrpath)
+
+    new_deps = ['@rpath/%s' % os.path.basename(dep) for dep in deps if
+               dep.startswith(old_dir)]
+    if len(new_deps) == len(deps):
+        for dep, ndep in zip(deps, new_deps):
+            if not ndep == dep:
+                replace_prefix_bin(cur_path, re.escape(dep), ndep)
+
+    if dll.headers[0].filetype == 'dylib' :
+        nident = '@rpath/%s' % os.path.basename(ident)
+        if not nident == ident:
+            replace_prefix_bin(cur_path, re.escape(ident), nident)
     return
 
 
@@ -431,6 +457,7 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
                                      new_dir.encode('utf-8')) + b'\0' * padding
 
     with open(path_name, 'rb+') as f:
+        tty.debug('In replace_prefix_bin(%s,%s,%s)'%(path_name, old_dir, new_dir))
         data = f.read()
         f.seek(0)
         original_data_len = len(data)
@@ -438,7 +465,6 @@ def replace_prefix_bin(path_name, old_dir, new_dir):
         if not pat.search(data):
             return
         ndata = pat.sub(replace, data)
-        tty.debug('In replace_prefix_bin(%s,%s,%s)'%(path_name, old_dir, new_dir))
         if not len(ndata) == original_data_len:
             raise BinaryStringReplacementException(
                 path_name, original_data_len, len(ndata))
@@ -472,17 +498,12 @@ def relocate_macho_binaries(path_names, old_dir, new_dir, spec):
             continue
         if platform.system().lower() == 'darwin':
             rpaths, deps, idpath = macho_get_paths(path_name)
-            tty.debug('OLD %s, %s, %s' % (rpaths, deps, idpath))
             new_rpaths, new_deps, new_idpath = macho_replace_paths(path_name, old_dir, new_dir, rpaths, deps, idpath, env_rpaths)
-            tty.debug('NEW %s, %s, %s' % (new_rpaths, new_deps, new_idpath))
             modify_macho_object(path_name,
                                 rpaths, deps, idpath,
                                 new_rpaths, new_deps, new_idpath)
         else:
-            modify_object_macholib(path_name, placeholder, '@rpath')
-            modify_object_macholib(path_name, old_dir, '@rpath')
-            for orpath, nrpath in zip(rpaths, new_rpaths):
-                replace_prefix_bin(path_name, orpath, nrpath)
+            modify_object_macholib(path_name, old_dir, new_dir, env_rpaths)
 
 
 def relocate_elf_binaries(path_names, spec):
@@ -573,21 +594,20 @@ def make_link_placeholder(cur_path_names, cur_dir, old_dir):
         os.symlink(new_src, cur_path)
 
 
-def relocate_links(path_names, old_dir, new_dir):
+def relocate_links(filenames, old_dir, new_dir, old_prefix, prefix):
     """
-    Replace old path with new path in link sources.
-
-    Links in ``path_names`` must link to absolute paths or placeholders.
+    Replace old path or placehilder with relative path in link sources.
     """
     placeholder = set_placeholder(old_dir)
+    path_names = [ os.path.join(prefix, filename) for filename in filenames]
     for path_name in path_names:
         old_src = os.readlink(path_name)
-        # replace either placeholder or old_dir
-        new_src = old_src.replace(placeholder, new_dir, 1)
-        new_src = new_src.replace(old_dir, new_dir, 1)
-
+        old_src = re.sub(placeholder, old_dir, old_src)
+        rel_old = os.path.relpath(old_src, old_prefix)
+        rel_new = os.path.relpath(os.path.join(prefix, rel_old),
+                                  os.path.dirname(path_name))
         os.unlink(path_name)
-        os.symlink(new_src, path_name)
+        os.symlink(rel_new, path_name)
 
 
 def relocate_text(path_names, oldpath, newpath, oldprefix, newprefix,
