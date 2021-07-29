@@ -40,3 +40,9 @@ class Hepmc(CMakePackage):
         else:
             url = "https://hepmc.web.cern.ch/hepmc/releases/hepmc{0}.tgz"
         return url.format(version)
+
+    @run_after('install')
+    def darwin_fix(self):
+        if sys.platform == 'darwin':
+            fix_darwin_install_name(self.prefix.lib)
+

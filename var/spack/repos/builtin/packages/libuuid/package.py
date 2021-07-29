@@ -6,12 +6,16 @@
 from spack import *
 
 
-class Libuuid(AutotoolsPackage, SourceforgePackage):
+class Libuuid(AutotoolsPackage):
     """Portable uuid C library"""
 
     homepage = "http://sourceforge.net/projects/libuuid/"
-    sourceforge_mirror_path = "libuuid/libuuid-1.0.3.tar.gz"
+    url = "https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v2.32/util-linux-2.32.1.tar.gz"
 
-    version('1.0.3', sha256='46af3275291091009ad7f1b899de3d0cea0252737550e7919d17237997db5644')
-
+    version('2.32.1', sha256='3bbf9f3d4a33d6653cf0f7e4fc422091b6a38c3b1195c0ee716c67148a1a7122')
+    
     provides('uuid')
+
+    def configure_args(self):
+        args = ['--disable-all-programs', '--enable-libuuid']
+        return args

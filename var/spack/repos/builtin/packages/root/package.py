@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 
-import sys
+import sys,platform
 
 from spack import *
 from spack.util.environment import is_system_path
@@ -222,11 +222,12 @@ class Root(CMakePackage):
     depends_on('libsm',   when="+x")
 
     # OpenGL
-    depends_on('ftgl@2.4.0:',  when="+x+opengl")
-    depends_on('glew',  when="+x+opengl")
-    depends_on('gl',    when="+x+opengl")
-    depends_on('glu',   when="+x+opengl")
-    depends_on('gl2ps', when="+x+opengl")
+    depends_on('ftgl@2.4.0:',  when="+opengl")
+    depends_on('glew',  when="+opengl")
+    depends_on('gl2ps', when="+opengl")
+    if sys.platform != 'darwin':
+        depends_on('gl',    when="+x+opengl")
+        depends_on('glu',   when="+x+opengl")
 
     # Qt4
     depends_on('qt@:4.999', when='+qt4')
@@ -297,11 +298,14 @@ class Root(CMakePackage):
               msg='HTTP server currently unsupported due to dependency issues')
 
     # Incompatible variants
-    conflicts('+opengl', when='~x', msg='OpenGL requires X')
+    if sys.platform != 'darwin':
+        conflicts('+opengl', when='~x', msg='OpenGL requires X')
     conflicts('+tmva', when='~gsl', msg='TVMA requires GSL')
     conflicts('+tmva', when='~mlp', msg='TVMA requires MLP')
     conflicts('cxxstd=11', when='+root7', msg='root7 requires at least C++14')
 
+    conflicts('+tbb', when='@:6.24' and platform.mac_ver()
+              [0] == '11.1' and platform.mac_ver()[2] == 'arm64')
     # Feature removed in 6.18:
     for pkg in ('memstat', 'qt4', 'table'):
         conflicts('+' + pkg, when='@6.18.00:',
@@ -361,7 +365,7 @@ class Root(CMakePackage):
         # Options related to ROOT's ability to download and build its own
         # dependencies. Per Spack convention, this should generally be avoided.
         options += [
-            define_from_variant('builtin_afterimage', 'x'),
+            define('builtin_afterimage', True),
             define('builtin_cfitsio', False),
             define('builtin_davix', False),
             define('builtin_fftw3', False),
@@ -528,7 +532,7 @@ class Root(CMakePackage):
             add_include_path('fontconfig')
             add_include_path('libx11')
             add_include_path('xproto')
-        if '+opengl' in spec:
+        if '+opengl' in spec and sys.platform != 'darwin':
             add_include_path('glew')
             add_include_path('mesa-glu')
 
@@ -553,3 +557,22 @@ class Root(CMakePackage):
         env.prepend_path('PATH', self.prefix.bin)
         if "+rpath" not in self.spec:
             env.prepend_path('LD_LIBRARY_PATH', self.prefix.lib)
+
+    def patch(self):
+
+        filter_file(r'rm -f \${COMPILEDATA}.tmp',
+         'CUSTOMSHARED="cd \$BuildDir; $SPACK_CXX -fPIC -c \$Opt $CXXFLAGS ' + 
+         '\$IncludePath \$SourceFiles; $SPACK_CXX \$Opt \$ObjectFiles $SOFLAGS '+
+         '$LDFLAGS $EXPLLINKLIBS -o \$SharedLib"\n'+
+         'CUSTOMEXE="cd \$BuildDir; $SPACK_CXX -c \$Opt $CXXFLAGS \$IncludePath '+
+        '\$SourceFiles; $SPACK_CXX \$Opt \$ObjectFiles $LDFLAGS -o \$ExeName '+
+         '\$LinkedLibs\"\n'+
+         'rm -f ${COMPILEDATA}.tmp',
+         'build/unix/compiledata.sh') 
+
+        if sys.platform=='darwin' and platform.machine()=='arm64':
+            # gfortran from gcc 10 dev does not accept -m64 option
+            filter_file(
+            r'_Fortran_FLAGS} -m64',
+            '_Fortran_FLAGS}',
+            'cmake/modules/SetUpMacOS.cmake')

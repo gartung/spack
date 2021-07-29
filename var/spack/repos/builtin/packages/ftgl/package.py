@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
-
+import sys
 
 class Ftgl(CMakePackage):
     """Library to use arbitrary fonts in OpenGL applications."""
@@ -23,9 +23,10 @@ class Ftgl(CMakePackage):
     depends_on('cmake@2.8:', type='build')
     # depends_on('doxygen', type='build', when='+doc')  -- FIXME, see above
     depends_on('pkgconfig', type='build')
-    depends_on('gl')
-    depends_on('glu')
     depends_on('freetype@2.0.9:')
+    if sys.platform != 'darwin':
+        depends_on('gl')
+        depends_on('glu')
 
     # Fix oversight in CMakeLists
     patch('remove-ftlibrary-from-sources.diff', when='@:2.4.0')
@@ -35,6 +36,8 @@ class Ftgl(CMakePackage):
         args = ['-DBUILD_SHARED_LIBS={0}'.format(spec.satisfies('+shared'))]
         if 'darwin' in self.spec.architecture:
             args.append('-DCMAKE_MACOSX_RPATH=ON')
+            # OpenGL deprecated on macOS
+            args.append(self.define("CMAKE_CXX_FLAGS","-DGL_SILENCE_DEPRECATION"))
         return args
 
     # FIXME: See doc variant comment
