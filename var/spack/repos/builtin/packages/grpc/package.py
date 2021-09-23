@@ -40,6 +40,11 @@ class Grpc(CMakePackage):
     variant('codegen', default=True,
             description='Builds code generation plugins for protobuf '
                         'compiler (protoc)')
+    variant('cxxstd',
+            default='11',
+            values=('11','14', '17'),
+            multi=False,
+            description='Use the specified C++ standard when building.')
 
     depends_on('protobuf')
     depends_on('openssl')
@@ -49,7 +54,8 @@ class Grpc(CMakePackage):
     depends_on('re2', when='@1.33.1:')
 
     def cmake_args(self):
-        args = [
+        args = ['-DCMAKE_CXX_STANDARD={0}'.format(
+                self.spec.variants['cxxstd'].value),
             '-DBUILD_SHARED_LIBS:Bool={0}'.format(
                 'ON' if '+shared' in self.spec else 'OFF'),
             '-DgRPC_BUILD_CODEGEN:Bool={0}'.format(

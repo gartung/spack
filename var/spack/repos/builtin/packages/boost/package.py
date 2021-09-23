@@ -541,6 +541,10 @@ class Boost(Package):
         if '+graph' in spec and '+mpi' in spec:
             with_libs.append('graph_parallel')
 
+        # boost_json added in 1.75
+        if (self.spec.satisfies('@1.75:')):
+            with_libs.append('json')
+
         if not with_libs:
             # if no libraries are specified for compilation, then you dont have
             # to configure/build anything, just copy over to the prefix
