@@ -362,6 +362,10 @@ while [ $# -ne 0 ]; do
                 continue
             fi
             arg="${1#-l}"
+	    if [ "$arg" = "" ]; then
+		    shift
+		    continue
+            fi
             if [ -z "$arg" ]; then shift; arg="$1"; fi
             other_args+=("-l$arg")
             ;;
