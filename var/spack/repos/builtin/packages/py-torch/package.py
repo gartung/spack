@@ -185,6 +185,8 @@ class PyTorch(PythonPackage, CudaPackage):
     depends_on('py-six', type='test')
     depends_on('py-psutil', type='test')
 
+    patch('PyTorch-1.3.1_fix-build-on-AVX512-cpus.patch', when='@1.6.0') 
+
     # Fix BLAS being overridden by MKL
     # https://github.com/pytorch/pytorch/issues/60328
     patch('https://patch-diff.githubusercontent.com/raw/pytorch/pytorch/pull/59220.patch',

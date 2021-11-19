@@ -12,6 +12,7 @@ class Cppunit(AutotoolsPackage):
     homepage = "https://wiki.freedesktop.org/www/Software/cppunit/"
     url = "https://dev-www.libreoffice.org/src/cppunit-1.13.2.tar.gz"
 
+    version('1.15.1', sha256='89c5c6665337f56fd2db36bc3805a5619709d51fb136e51937072f63fcc717a7')
     version('1.14.0', sha256='3d569869d27b48860210c758c4f313082103a5e58219a7669b52bfd29d674780')
     version('1.13.2', sha256='3f47d246e3346f2ba4d7c9e882db3ad9ebd3fcbd2e8b732f946e0e3eeb9f429f')
 
