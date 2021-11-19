@@ -175,6 +175,15 @@ def test_install_with_source(
                        os.path.join(src, 'configure'))
 
 
+def test_install_env_variables(
+    mock_packages, mock_archive, mock_fetch, config, install_mockery
+):
+    spec = Spec('libdwarf')
+    spec.concretize()
+    install('libdwarf')
+    assert os.path.isfile(spec.package.install_env_path)
+
+
 @pytest.mark.disable_clean_stage_check
 def test_show_log_on_error(mock_packages, mock_archive, mock_fetch,
                            config, install_mockery, capfd):
@@ -506,7 +515,7 @@ def test_cdash_report_concretization_error(tmpdir, mock_fetch, install_mockery,
             # new or the old concretizer
             expected_messages = (
                 'Conflicts in concretized spec',
-                'does not satisfy'
+                'A conflict was triggered',
             )
             assert any(x in content for x in expected_messages)
 

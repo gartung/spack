@@ -69,7 +69,7 @@ class ConstraintAction(argparse.Action):
 
         # If an environment is provided, we'll restrict the search to
         # only its installed packages.
-        env = ev._active_environment
+        env = ev.active_environment()
         if env:
             kwargs['hashes'] = set(env.all_hashes())
 
@@ -319,4 +319,12 @@ the build yourself.  Format: %%Y%%m%%d-%%H%%M-[cdash-track]"""
         '--cdash-buildstamp',
         default=None,
         help=cdash_help['buildstamp']
+    )
+
+
+@arg
+def reuse():
+    return Args(
+        '--reuse', action='store_true', default=False,
+        help='reuse installed dependencies'
     )

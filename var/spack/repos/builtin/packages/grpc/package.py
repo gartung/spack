@@ -42,7 +42,7 @@ class Grpc(CMakePackage):
                         'compiler (protoc)')
     variant('cxxstd',
             default='11',
-            values=('11','14', '17'),
+            values=('11', '14', '17'),
             multi=False,
             description='Use the specified C++ standard when building.')
 
@@ -51,15 +51,13 @@ class Grpc(CMakePackage):
     depends_on('zlib')
     depends_on('c-ares')
     depends_on('abseil-cpp', when='@1.27:')
-    depends_on('re2', when='@1.33.1:')
+    depends_on('re2+pic', when='@1.33.1:')
 
     def cmake_args(self):
-        args = ['-DCMAKE_CXX_STANDARD={0}'.format(
-                self.spec.variants['cxxstd'].value),
-            '-DBUILD_SHARED_LIBS:Bool={0}'.format(
-                'ON' if '+shared' in self.spec else 'OFF'),
-            '-DgRPC_BUILD_CODEGEN:Bool={0}'.format(
-                'ON' if '+codegen' in self.spec else 'OFF'),
+        args = [
+            define_from_variant('BUILD_SHARED_LIBS', 'shared'),
+            define_from_variant('gRPC_BUILD_CODEGEN', 'codegen'),
+            define_from_variant('CMAKE_CXX_STANDARD', 'cxxstd'),
             '-DgRPC_BUILD_CSHARP_EXT:Bool=OFF',
             '-DgRPC_INSTALL:Bool=ON',
             # Tell grpc to skip vendoring and look for deps via find_package:
