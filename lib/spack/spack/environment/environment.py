@@ -22,7 +22,7 @@ import llnl.util.filesystem as fs
 import llnl.util.tty as tty
 import llnl.util.tty.color as clr
 from llnl.util.link_tree import ConflictingSpecsError
-from llnl.util.symlink import symlink
+from llnl.util.symlink import readlink, symlink
 
 import spack.compilers
 import spack.concretize
@@ -30,6 +30,7 @@ import spack.config
 import spack.deptypes as dt
 import spack.error
 import spack.fetch_strategy
+import spack.filesystem_view as fsv
 import spack.hash_types as ht
 import spack.hooks
 import spack.main
@@ -52,7 +53,6 @@ import spack.util.spack_yaml as syaml
 import spack.util.url
 import spack.version
 from spack import traverse
-from spack.filesystem_view import SimpleFilesystemView, inverse_view_func_parser, view_func_parser
 from spack.installer import PackageInstaller
 from spack.schema.env import TOP_LEVEL_KEY
 from spack.spec import Spec
@@ -606,7 +606,7 @@ class ViewDescriptor:
         self.projections = projections
         self.select = select
         self.exclude = exclude
-        self.link_type = view_func_parser(link_type)
+        self.link_type = fsv.canonicalize_link_type(link_type)
         self.link = link
 
     def select_fn(self, spec):
@@ -640,7 +640,7 @@ class ViewDescriptor:
         if self.exclude:
             ret["exclude"] = self.exclude
         if self.link_type:
-            ret["link_type"] = inverse_view_func_parser(self.link_type)
+            ret["link_type"] = self.link_type
         if self.link != default_view_link:
             ret["link"] = self.link
         return ret
@@ -662,7 +662,7 @@ class ViewDescriptor:
         if not os.path.islink(self.root):
             return None
 
-        root = os.readlink(self.root)
+        root = readlink(self.root)
         if os.path.isabs(root):
             return root
 
@@ -690,7 +690,7 @@ class ViewDescriptor:
         to exist on the filesystem."""
         return self._view(self.root).get_projection_for_spec(spec)
 
-    def view(self, new: Optional[str] = None) -> SimpleFilesystemView:
+    def view(self, new: Optional[str] = None) -> fsv.SimpleFilesystemView:
         """
         Returns a view object for the *underlying* view directory. This means that the
         self.root symlink is followed, and that the view has to exist on the filesystem
@@ -710,14 +710,14 @@ class ViewDescriptor:
             )
         return self._view(path)
 
-    def _view(self, root: str) -> SimpleFilesystemView:
+    def _view(self, root: str) -> fsv.SimpleFilesystemView:
         """Returns a view object for a given root dir."""
-        return SimpleFilesystemView(
+        return fsv.SimpleFilesystemView(
             root,
             spack.store.STORE.layout,
             ignore_conflicts=True,
             projections=self.projections,
-            link=self.link_type,
+            link_type=self.link_type,
         )
 
     def __contains__(self, spec):
@@ -1190,7 +1190,6 @@ class Environment:
     def include_concrete_envs(self):
         """Copy and save the included envs' specs internally"""
 
-        lockfile_meta = None
         root_hash_seen = set()
         concrete_hash_seen = set()
         self.included_concrete_spec_data = {}
@@ -1201,37 +1200,26 @@ class Environment:
                 raise SpackEnvironmentError(f"Unable to find env at {env_path}")
 
             env = Environment(env_path)
-
-            with open(env.lock_path) as f:
-                lockfile_as_dict = env._read_lockfile(f)
-
-            # Lockfile_meta must match each env and use at least format version 5
-            if lockfile_meta is None:
-                lockfile_meta = lockfile_as_dict["_meta"]
-            elif lockfile_meta != lockfile_as_dict["_meta"]:
-                raise SpackEnvironmentError("All lockfile _meta values must match")
-            elif lockfile_meta["lockfile-version"] < 5:
-                raise SpackEnvironmentError("The lockfile format must be at version 5 or higher")
+            self.included_concrete_spec_data[env_path] = {"roots": [], "concrete_specs": {}}
 
             # Copy unique root specs from env
-            self.included_concrete_spec_data[env_path] = {"roots": []}
-            for root_dict in lockfile_as_dict["roots"]:
+            for root_dict in env._concrete_roots_dict():
                 if root_dict["hash"] not in root_hash_seen:
                     self.included_concrete_spec_data[env_path]["roots"].append(root_dict)
                     root_hash_seen.add(root_dict["hash"])
 
             # Copy unique concrete specs from env
-            for concrete_spec in lockfile_as_dict["concrete_specs"]:
-                if concrete_spec not in concrete_hash_seen:
-                    self.included_concrete_spec_data[env_path].update(
-                        {"concrete_specs": lockfile_as_dict["concrete_specs"]}
+            for dag_hash, spec_details in env._concrete_specs_dict().items():
+                if dag_hash not in concrete_hash_seen:
+                    self.included_concrete_spec_data[env_path]["concrete_specs"].update(
+                        {dag_hash: spec_details}
                     )
-                    concrete_hash_seen.add(concrete_spec)
+                    concrete_hash_seen.add(dag_hash)
 
-            if "include_concrete" in lockfile_as_dict.keys():
-                self.included_concrete_spec_data[env_path]["include_concrete"] = lockfile_as_dict[
-                    "include_concrete"
-                ]
+            # Copy transitive include data
+            transitive = env.included_concrete_spec_data
+            if transitive:
+                self.included_concrete_spec_data[env_path]["include_concrete"] = transitive
 
         self._read_lockfile_dict(self._to_lockfile_dict())
         self.write()
@@ -2144,16 +2132,23 @@ class Environment:
 
         return specs
 
-    def _to_lockfile_dict(self):
-        """Create a dictionary to store a lockfile for this environment."""
+    def _concrete_specs_dict(self):
         concrete_specs = {}
         for s in traverse.traverse_nodes(self.specs_by_hash.values(), key=traverse.by_dag_hash):
             spec_dict = s.node_dict_with_hashes(hash=ht.dag_hash)
             # Assumes no legacy formats, since this was just created.
             spec_dict[ht.dag_hash.name] = s.dag_hash()
             concrete_specs[s.dag_hash()] = spec_dict
+        return concrete_specs
 
+    def _concrete_roots_dict(self):
         hash_spec_list = zip(self.concretized_order, self.concretized_user_specs)
+        return [{"hash": h, "spec": str(s)} for h, s in hash_spec_list]
+
+    def _to_lockfile_dict(self):
+        """Create a dictionary to store a lockfile for this environment."""
+        concrete_specs = self._concrete_specs_dict()
+        root_specs = self._concrete_roots_dict()
 
         spack_dict = {"version": spack.spack_version}
         spack_commit = spack.main.get_spack_commit()
@@ -2174,7 +2169,7 @@ class Environment:
             # spack version information
             "spack": spack_dict,
             # users specs + hashes are the 'roots' of the environment
-            "roots": [{"hash": h, "spec": str(s)} for h, s in hash_spec_list],
+            "roots": root_specs,
             # Concrete specs by hash, including dependencies
             "concrete_specs": concrete_specs,
         }
@@ -3036,54 +3031,56 @@ class EnvironmentManifestFile(collections.abc.Mapping):
         for i, config_path in enumerate(reversed(includes)):
             # allow paths to contain spack config/environment variables, etc.
             config_path = substitute_path_variables(config_path)
-
             include_url = urllib.parse.urlparse(config_path)
 
-            # Transform file:// URLs to direct includes.
-            if include_url.scheme == "file":
-                config_path = urllib.request.url2pathname(include_url.path)
+            # If scheme is not valid, config_path is not a url
+            # of a type Spack is generally aware
+            if spack.util.url.validate_scheme(include_url.scheme):
+                # Transform file:// URLs to direct includes.
+                if include_url.scheme == "file":
+                    config_path = urllib.request.url2pathname(include_url.path)
 
-            # Any other URL should be fetched.
-            elif include_url.scheme in ("http", "https", "ftp"):
-                # Stage any remote configuration file(s)
-                staged_configs = (
-                    os.listdir(self.config_stage_dir)
-                    if os.path.exists(self.config_stage_dir)
-                    else []
-                )
-                remote_path = urllib.request.url2pathname(include_url.path)
-                basename = os.path.basename(remote_path)
-                if basename in staged_configs:
-                    # Do NOT re-stage configuration files over existing
-                    # ones with the same name since there is a risk of
-                    # losing changes (e.g., from 'spack config update').
-                    tty.warn(
-                        "Will not re-stage configuration from {0} to avoid "
-                        "losing changes to the already staged file of the "
-                        "same name.".format(remote_path)
+                # Any other URL should be fetched.
+                elif include_url.scheme in ("http", "https", "ftp"):
+                    # Stage any remote configuration file(s)
+                    staged_configs = (
+                        os.listdir(self.config_stage_dir)
+                        if os.path.exists(self.config_stage_dir)
+                        else []
                     )
-
-                    # Recognize the configuration stage directory
-                    # is flattened to ensure a single copy of each
-                    # configuration file.
-                    config_path = self.config_stage_dir
-                    if basename.endswith(".yaml"):
-                        config_path = os.path.join(config_path, basename)
-                else:
-                    staged_path = spack.config.fetch_remote_configs(
-                        config_path, str(self.config_stage_dir), skip_existing=True
-                    )
-                    if not staged_path:
-                        raise SpackEnvironmentError(
-                            "Unable to fetch remote configuration {0}".format(config_path)
+                    remote_path = urllib.request.url2pathname(include_url.path)
+                    basename = os.path.basename(remote_path)
+                    if basename in staged_configs:
+                        # Do NOT re-stage configuration files over existing
+                        # ones with the same name since there is a risk of
+                        # losing changes (e.g., from 'spack config update').
+                        tty.warn(
+                            "Will not re-stage configuration from {0} to avoid "
+                            "losing changes to the already staged file of the "
+                            "same name.".format(remote_path)
                         )
-                    config_path = staged_path
 
-            elif include_url.scheme:
-                raise ValueError(
-                    f"Unsupported URL scheme ({include_url.scheme}) for "
-                    f"environment include: {config_path}"
-                )
+                        # Recognize the configuration stage directory
+                        # is flattened to ensure a single copy of each
+                        # configuration file.
+                        config_path = self.config_stage_dir
+                        if basename.endswith(".yaml"):
+                            config_path = os.path.join(config_path, basename)
+                    else:
+                        staged_path = spack.config.fetch_remote_configs(
+                            config_path, str(self.config_stage_dir), skip_existing=True
+                        )
+                        if not staged_path:
+                            raise SpackEnvironmentError(
+                                "Unable to fetch remote configuration {0}".format(config_path)
+                            )
+                        config_path = staged_path
+
+                elif include_url.scheme:
+                    raise ValueError(
+                        f"Unsupported URL scheme ({include_url.scheme}) for "
+                        f"environment include: {config_path}"
+                    )
 
             # treat relative paths as relative to the environment
             if not os.path.isabs(config_path):

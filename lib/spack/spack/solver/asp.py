@@ -844,8 +844,6 @@ class PyclingoDriver:
         parent_dir = os.path.dirname(__file__)
         self.control.load(os.path.join(parent_dir, "concretize.lp"))
         self.control.load(os.path.join(parent_dir, "heuristic.lp"))
-        if spack.config.CONFIG.get("concretizer:duplicates:strategy", "none") != "none":
-            self.control.load(os.path.join(parent_dir, "heuristic_separate.lp"))
         self.control.load(os.path.join(parent_dir, "display.lp"))
         if not setup.concretize_everything:
             self.control.load(os.path.join(parent_dir, "when_possible.lp"))
@@ -1435,16 +1433,14 @@ class SpackSolverSetup:
             # caller, we won't emit partial facts.
 
             condition_id = next(self._id_counter)
-            self.gen.fact(fn.pkg_fact(required_spec.name, fn.condition(condition_id)))
-            self.gen.fact(fn.condition_reason(condition_id, msg))
-
             trigger_id = self._get_condition_id(
                 required_spec, cache=self._trigger_cache, body=True, transform=transform_required
             )
+            self.gen.fact(fn.pkg_fact(required_spec.name, fn.condition(condition_id)))
+            self.gen.fact(fn.condition_reason(condition_id, msg))
             self.gen.fact(
                 fn.pkg_fact(required_spec.name, fn.condition_trigger(condition_id, trigger_id))
             )
-
             if not imposed_spec:
                 return condition_id
 
@@ -1693,19 +1689,43 @@ class SpackSolverSetup:
                 spack.spec.parse_with_version_concrete(x["spec"]) for x in externals
             ]
 
-            external_specs = []
+            selected_externals = set()
             if spec_filters:
                 for current_filter in spec_filters:
                     current_filter.factory = lambda: candidate_specs
-                    external_specs.extend(current_filter.selected_specs())
-            else:
-                external_specs.extend(candidate_specs)
+                    selected_externals.update(current_filter.selected_specs())
+
+            # Emit facts for externals specs. Note that "local_idx" is the index of the spec
+            # in packages:<pkg_name>:externals. This means:
+            #
+            # packages:<pkg_name>:externals[local_idx].spec == spec
+            external_versions = []
+            for local_idx, spec in enumerate(candidate_specs):
+                msg = f"{spec.name} available as external when satisfying {spec}"
+
+                if spec_filters and spec not in selected_externals:
+                    continue
+
+                if not spec.versions.concrete:
+                    warnings.warn(f"cannot use the external spec {spec}: needs a concrete version")
+                    continue
+
+                def external_imposition(input_spec, requirements):
+                    return requirements + [
+                        fn.attr("external_conditions_hold", input_spec.name, local_idx)
+                    ]
+
+                try:
+                    self.condition(spec, spec, msg=msg, transform_imposed=external_imposition)
+                except (spack.error.SpecError, RuntimeError) as e:
+                    warnings.warn(f"while setting up external spec {spec}: {e}")
+                    continue
+                external_versions.append((spec.version, local_idx))
+                self.possible_versions[spec.name].add(spec.version)
+                self.gen.newline()
 
             # Order the external versions to prefer more recent versions
             # even if specs in packages.yaml are not ordered that way
-            external_versions = [
-                (x.version, external_id) for external_id, x in enumerate(external_specs)
-            ]
             external_versions = [
                 (v, idx, external_id)
                 for idx, (v, external_id) in enumerate(sorted(external_versions, reverse=True))
@@ -1714,19 +1734,6 @@ class SpackSolverSetup:
                 self.declared_versions[pkg_name].append(
                     DeclaredVersion(version=version, idx=idx, origin=Provenance.EXTERNAL)
                 )
-
-            # Declare external conditions with a local index into packages.yaml
-            for local_idx, spec in enumerate(external_specs):
-                msg = "%s available as external when satisfying %s" % (spec.name, spec)
-
-                def external_imposition(input_spec, requirements):
-                    return requirements + [
-                        fn.attr("external_conditions_hold", input_spec.name, local_idx)
-                    ]
-
-                self.condition(spec, spec, msg=msg, transform_imposed=external_imposition)
-                self.possible_versions[spec.name].add(spec.version)
-                self.gen.newline()
 
             self.trigger_rules()
             self.effect_rules()
@@ -1880,11 +1887,8 @@ class SpackSolverSetup:
                             )
 
                 clauses.append(f.variant_value(spec.name, vname, value))
-
                 if variant.propagate:
-                    clauses.append(
-                        f.variant_propagation_candidate(spec.name, vname, value, spec.name)
-                    )
+                    clauses.append(f.propagate(spec.name, fn.variant_value(vname, value)))
 
                 # Tell the concretizer that this is a possible value for the
                 # variant, to account for things like int/str values where we
@@ -1938,6 +1942,11 @@ class SpackSolverSetup:
         else:
             for virtual in virtuals:
                 clauses.append(fn.attr("virtual_on_incoming_edges", spec.name, virtual))
+
+        # If the spec is external and concrete, we allow all the libcs on the system
+        if spec.external and spec.concrete and using_libc_compatibility():
+            for libc in self.libcs:
+                clauses.append(fn.attr("compatible_libc", spec.name, libc.name, libc.version))
 
         # add all clauses from dependencies
         if transitive:
@@ -2734,7 +2743,7 @@ class _Head:
     node_flag = fn.attr("node_flag_set")
     node_flag_source = fn.attr("node_flag_source")
     node_flag_propagate = fn.attr("node_flag_propagate")
-    variant_propagation_candidate = fn.attr("variant_propagation_candidate")
+    propagate = fn.attr("propagate")
 
 
 class _Body:
@@ -2751,7 +2760,7 @@ class _Body:
     node_flag = fn.attr("node_flag")
     node_flag_source = fn.attr("node_flag_source")
     node_flag_propagate = fn.attr("node_flag_propagate")
-    variant_propagation_candidate = fn.attr("variant_propagation_candidate")
+    propagate = fn.attr("propagate")
 
 
 class ProblemInstanceBuilder:
@@ -3223,6 +3232,39 @@ class RuntimePropertyRecorder:
             )
 
         self.runtime_conditions.add((imposed_spec, when_spec))
+        self.reset()
+
+    def propagate(self, constraint_str: str, *, when: str):
+        msg = "the 'propagate' method can be called only with pkg('*')"
+        assert self.current_package == "*", msg
+
+        when_spec = spack.spec.Spec(when)
+        assert when_spec.name is None, "only anonymous when specs are accepted"
+
+        placeholder = "XXX"
+        node_variable = "node(ID, Package)"
+        when_spec.name = placeholder
+
+        body_clauses = self._setup.spec_clauses(when_spec, body=True)
+        body_str = (
+            f"  {f',{os.linesep}  '.join(str(x) for x in body_clauses)},\n"
+            f"  not external({node_variable}),\n"
+            f"  not runtime(Package)"
+        ).replace(f'"{placeholder}"', f"{node_variable}")
+
+        constraint_spec = spack.spec.Spec(constraint_str)
+        assert constraint_spec.name is None, "only anonymous constraint specs are accepted"
+
+        constraint_spec.name = placeholder
+        constraint_clauses = self._setup.spec_clauses(constraint_spec, body=False)
+        for clause in constraint_clauses:
+            if clause.args[0] == "node_compiler_version_satisfies":
+                self._setup.compiler_version_constraints.add(constraint_spec.compiler)
+                args = f'"{constraint_spec.compiler.name}", "{constraint_spec.compiler.versions}"'
+                head_str = f"propagate({node_variable}, node_compiler_version_satisfies({args}))"
+                rule = f"{head_str} :-\n{body_str}.\n\n"
+                self.rules.append(rule)
+
         self.reset()
 
     def consume_facts(self):
