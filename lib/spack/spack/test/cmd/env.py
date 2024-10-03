@@ -15,6 +15,7 @@ import pytest
 import llnl.util.filesystem as fs
 import llnl.util.link_tree
 import llnl.util.tty as tty
+from llnl.util.symlink import readlink
 
 import spack.cmd.env
 import spack.config
@@ -27,7 +28,9 @@ import spack.modules
 import spack.package_base
 import spack.paths
 import spack.repo
+import spack.store
 import spack.util.spack_json as sjson
+import spack.util.spack_yaml
 from spack.cmd.env import _env_create
 from spack.main import SpackCommand, SpackCommandError
 from spack.spec import Spec
@@ -500,7 +503,7 @@ def test_env_install_two_specs_same_dep(install_mockery, mock_fetch, tmpdir, cap
                 """\
 spack:
   specs:
-  - a
+  - pkg-a
   - depb
 """
             )
@@ -519,8 +522,8 @@ spack:
     depb = spack.store.STORE.db.query_one("depb", installed=True)
     assert depb, "Expected depb to be installed"
 
-    a = spack.store.STORE.db.query_one("a", installed=True)
-    assert a, "Expected a to be installed"
+    a = spack.store.STORE.db.query_one("pkg-a", installed=True)
+    assert a, "Expected pkg-a to be installed"
 
 
 def test_remove_after_concretize():
@@ -824,7 +827,7 @@ def test_env_view_external_prefix(tmp_path, mutable_database, mock_packages):
         """\
 spack:
   specs:
-  - a
+  - pkg-a
   view: true
 """
     )
@@ -832,9 +835,9 @@ spack:
     external_config = io.StringIO(
         """\
 packages:
-  a:
+  pkg-a:
     externals:
-    - spec: a@2.0
+    - spec: pkg-a@2.0
       prefix: {a_prefix}
     buildable: false
 """.format(
@@ -1734,6 +1737,17 @@ def test_env_include_concrete_env_yaml(env_name):
 
     assert "include_concrete" in combined_yaml
     assert test.path in combined_yaml["include_concrete"]
+
+
+@pytest.mark.regression("45766")
+@pytest.mark.parametrize("format", ["v1", "v2", "v3"])
+def test_env_include_concrete_old_env(format, tmpdir):
+    lockfile = os.path.join(spack.paths.test_path, "data", "legacy_env", f"{format}.lock")
+    # create an env from old .lock file -- this does not update the format
+    env("create", "old-env", lockfile)
+    env("create", "--include-concrete", "old-env", "test")
+
+    assert ev.read("old-env").all_specs() == ev.read("test").all_specs()
 
 
 def test_env_bad_include_concrete_env():
@@ -4414,8 +4428,8 @@ def test_env_view_resolves_identical_file_conflicts(tmp_path, install_mockery, m
     #   view-file/bin/
     #     x                                          # expect this x to be linked
 
-    assert os.readlink(tmp_path / "view" / "bin" / "x") == bottom.bin.x
-    assert os.readlink(tmp_path / "view" / "bin" / "y") == top.bin.y
+    assert readlink(tmp_path / "view" / "bin" / "x") == bottom.bin.x
+    assert readlink(tmp_path / "view" / "bin" / "y") == top.bin.y
 
 
 def test_env_view_ignores_different_file_conflicts(tmp_path, install_mockery, mock_fetch):
@@ -4426,4 +4440,4 @@ def test_env_view_ignores_different_file_conflicts(tmp_path, install_mockery, mo
         install()
         prefix_dependent = e.matching_spec("view-ignore-conflict").prefix
     # The dependent's file is linked into the view
-    assert os.readlink(tmp_path / "view" / "bin" / "x") == prefix_dependent.bin.x
+    assert readlink(tmp_path / "view" / "bin" / "x") == prefix_dependent.bin.x
