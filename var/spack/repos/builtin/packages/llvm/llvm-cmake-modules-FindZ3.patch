@@ -1,0 +1,10 @@
+--- llvm/cmake/modules/FindZ3.cmake.bak	2024-10-04 10:19:06.702461755 -0500
++++ llvm/cmake/modules/FindZ3.cmake	2024-10-04 10:19:38.949564722 -0500
+@@ -19,6 +19,7 @@
+   file(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testz3.cpp
+        "#include <assert.h>
+         #include <z3.h>
++        #include <cstdio>
+         int main() {
+           unsigned int major, minor, build, rev;
+           Z3_get_version(&major, &minor, &build, &rev);
