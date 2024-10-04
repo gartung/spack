@@ -587,7 +587,7 @@ class Llvm(CMakePackage, CudaPackage, CompilerPackage):
 
     patch("sanitizer-platform-limits-posix-xdr-macos.patch", when="@10:14 platform=darwin")
 
-    patch("llvm-cmake-modules-FindZ3.patch", when="@14.0.6")
+    patch("llvm-cmake-modules-FindZ3.patch", level=0,  when="@14.0.6")
 
     @when("@14:17")
     def patch(self):
