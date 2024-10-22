@@ -52,7 +52,7 @@ class Pthreadpool(CMakePackage):
     def cmake_args(self):
         return [
             self.define("BUILD_SHARED_LIBS", True),
-            self.define("PTHREADPOOL_LIBRARY_TYPE", shared),
+            self.define("PTHREADPOOL_LIBRARY_TYPE", "shared"),
             self.define("FXDIV_SOURCE_DIR", join_path(self.stage.source_path, "deps", "fxdiv")),
             self.define(
                 "GOOGLETEST_SOURCE_DIR", join_path(self.stage.source_path, "deps", "googletest")
